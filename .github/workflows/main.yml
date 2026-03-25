@@ -1,0 +1,19 @@
+name: Quet_Lich_Lâm_Hà
+on:
+  schedule:
+    - cron: '0 0 * * *' # Đúng 7h sáng VN nó tự thức dậy quét
+  workflow_dispatch: # Tạo cái nút để đại ca tự bấm chạy thử bất cứ lúc nào
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install lib
+        run: pip install requests beautifulsoup4
+      - name: Run script
+        run: python main.py
