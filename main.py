@@ -1,32 +1,43 @@
 import requests
-from bs4 import BeautifulSoup
 
-def quet_chot_ha():
-    # Sử dụng trang tổng hợp lịch cúp điện (thường ít bảo mật hơn web chính EVN)
-    url = "https://lichcupdien.com.vn/lich-cup-dien-lam-dong.html"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+def nam_vung_evn():
+    # Đây là cổng API nội bộ (Endpoint) thường ít bị chặn hơn web giao diện
+    url = "https://api.evnspc.vn/api/LichNgungGiamCungCapDien/GetLichNgungGiamCungCapDien"
     
-    print("--- Đang quét lịch Lâm Đồng (Trang tổng hợp) ---")
+    # Payload nhắm thẳng vào mã Điện lực Lâm Hà (PB11LH)
+    # Thời gian từ hôm nay đến 7 ngày tới
+    data = {
+        "maDonVi": "PB11LH",
+        "tuNgay": "2026-03-25",
+        "denNgay": "2026-04-01",
+        "loaiLich": "0"
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
+    }
+
+    print("--- Đang đột nhập vào hệ thống dữ liệu Lâm Hà ---")
     
     try:
-        res = requests.get(url, headers=headers)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # Tìm tất cả các bảng hoặc thẻ chứa thông tin
-        items = soup.find_all(['tr', 'div'], class_=['event-item', 'row'])
-        
-        found = False
-        for item in items:
-            text = item.get_text()
-            if "Lâm Hà" in text:
-                print(f"✅ ĐÃ CHÍN: {text.strip()}")
-                found = True
-        
-        if not found:
-            print("Kết quả: Hiện tại trên hệ thống chưa có lịch cúp điện mới nào được đăng tải cho Lâm Hà.")
+        response = requests.post(url, json=data, headers=headers, timeout=30)
+        if response.status_code == 200:
+            ket_qua = response.json()
+            if not ket_qua or len(ket_qua) == 0:
+                print("Hệ thống báo: Hiện tại Lâm Hà chưa có lịch cúp điện mới nào đăng ký trên server.")
+            else:
+                print(f"✅ ĐÃ TÓM ĐƯỢC {len(ket_qua)} THÔNG TIN:")
+                for item in ket_qua:
+                    print(f"- Khu vực: {item.get('TenKhuVuc')}")
+                    print(f"  Thời gian: {item.get('ThoiGian')}")
+                    print(f"  Lý do: {item.get('LyDo')}")
+                    print("-" * 20)
+        else:
+            print(f"Bị chặn cửa rồi đại ca: Mã lỗi {response.status_code}")
             
     except Exception as e:
-        print(f"Lỗi: {e}")
+        print(f"Lỗi nằm vùng: {e}")
 
 if __name__ == "__main__":
-    quet_chot_ha()
+    nam_vung_evn()
