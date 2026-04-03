@@ -1,4 +1,4 @@
-name: Quet_Lich_Lâm_Hà
+name: Quet_Lich_Lam_Ha
 on:
   schedule:
     - cron: '0 0 * * *' # Đúng 7h sáng VN nó tự thức dậy quét
@@ -8,12 +8,18 @@ jobs:
   run_bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - name: Install lib
-        run: pip install requests beautifulsoup4
+        run: |
+          pip install requests beautifulsoup4 playwright selenium webdriver-manager
+          playwright install chromium --with-deps
+
       - name: Run script
         run: python main.py
