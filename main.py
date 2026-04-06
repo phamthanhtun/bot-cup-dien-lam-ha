@@ -1,20 +1,18 @@
 import asyncio
 from playwright.async_api import async_playwright
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.request
 import urllib.parse
 
 # --- THÔNG TIN CHUẨN CỦA ĐẠI CA ---
 TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
-MA_DON_VI = "PC15LL"
 
 def send_telegram(message):
     try:
         msg = urllib.parse.quote(message)
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=HTML"
         urllib.request.urlopen(url)
-        print("✅ Đã gửi báo cáo về Telegram!")
     except Exception as e:
         print(f"❌ Lỗi Telegram: {e}")
 
@@ -25,43 +23,68 @@ async def run():
         page = await context.new_page()
         
         try:
-            print("→ Đang quét tổng lực tỉnh Lâm Đồng...")
+            print("→ Đang truy cập hệ thống EVNSPC...")
             await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=90000)
             await asyncio.sleep(5) 
 
-            tu_ngay = datetime.now().strftime('%d/%m/%Y')
-            # Quét mã PC15 (Toàn tỉnh Lâm Đồng)
-            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi=PC15&TuNgay={tu_ngay}&DenNgay=31/12/2026"
+            # LÙI 2 NGÀY ĐỂ TÓM CẢ LỊCH VỪA DIỄN RA
+            tu_ngay = (datetime.now() - timedelta(days=2)).strftime('%d/%m/%Y')
             
-            data = await page.evaluate(f"""
-                async () => {{
-                    try {{
-                        const response = await fetch("{api_url}");
-                        return await response.json();
-                    }} catch (e) {{
-                        return null;
-                    }}
-                }}
-            """)
+            # CHIÊU MỚI: Quét đồng thời cả mã huyện và mã đội quản lý
+            # PC15LL: Điện lực Lâm Hà | PC15LL01: Đội quản lý điện Lâm Hà
+            danh_sach_ma = ["PC15LL", "PC15LL01", "PC15LL02", "PC15LL03"]
             
-            if data and 'data' in data and len(data['data']) > 0:
-                # Lọc SIÊU NHẠY: Chấp cả viết hoa, viết thường, có dấu hay không dấu
-                def check_lam_ha(item):
-                    text_to_check = f"{item.get('TenDonVi', '')} {item.get('TenKhuVuc', '')}".lower()
-                    # Quét cả từ khóa "lâm hà" và "lam ha" cho chắc cú
-                    return "lâm hà" in text_to_check or "lam ha" in text_to_check
-
-                lich_lam_ha = [item for item in data['data'] if check_lam_ha(item)]
+            ket_qua_tong = []
+            
+            for ma in danh_sach_ma:
+                api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi={ma}&TuNgay={tu_ngay}&DenNgay=31/12/2026"
                 
-                if len(lich_lam_ha) > 0:
-                    # (Đoạn gửi tin nhắn giữ nguyên...)
-                    msg = f"⚠️ <b>CÓ LỊCH CÚP ĐIỆN MỚI TẠI LÂM HÀ!</b>\n"
-                    # ... copy lại đoạn for item in lich_lam_ha của sếp ...
-                    send_telegram(msg)
-                else:
-                    # Sếp thêm dòng này để "soi" xem thực tế nó lấy được bao nhiêu lịch toàn tỉnh
-                    tong_so = len(data['data'])
-                    send_telegram(f"🔍 <b>SOI DỮ LIỆU:</b>\nĐã lấy được {tong_so} lịch toàn tỉnh nhưng không có cái nào khớp 'Lâm Hà'.")
+                data = await page.evaluate(f"""
+                    async () => {{
+                        try {{
+                            const response = await fetch("{api_url}");
+                            const result = await response.json();
+                            return result;
+                        }} catch (e) {{
+                            return null;
+                        }}
+                    }}
+                """)
+                
+                if data and 'data' in data:
+                    ket_qua_tong.extend(data['data'])
+
+            # Lọc bỏ trùng lặp (nếu có)
+            seen = set()
+            lich_duy_nhat = []
+            for item in ket_qua_tong:
+                identifier = f"{item.get('ThoiGian')}-{item.get('TenKhuVuc')}"
+                if identifier not in seen:
+                    lich_duy_nhat.append(item)
+                    seen.add(identifier)
+
+            if len(lich_duy_nhat) > 0:
+                # Sắp xếp theo thời gian
+                lich_duy_nhat.sort(key=lambda x: x.get('ThoiGian', ''))
+                
+                msg = f"⚠️ <b>PHÁT HIỆN LỊCH CÚP ĐIỆN LÂM HÀ!</b>\n"
+                msg += f"📅 <i>Dữ liệu cập nhật: {datetime.now().strftime('%H:%M %d/%m')}</i>\n"
+                msg += "--------------------------------\n"
+                
+                # Gửi tối đa 8 lịch mới nhất để không bị quá tải tin nhắn
+                for item in lich_duy_nhat[:8]:
+                    msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
+                    msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
+                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+                    msg += "--------------------------------\n"
+                
+                if len(lich_duy_nhat) > 8:
+                    msg += f"<i>... và còn {len(lich_duy_nhat)-8} lịch khác sếp nhé!</i>"
+                
+                send_telegram(msg)
+                print(f"✅ Đã tìm thấy {len(lich_duy_nhat)} lịch!")
+            else:
+                print("Vẫn chưa thấy lịch trên hệ thống API.")
 
         except Exception as e:
             print(f"Lỗi: {e}")
