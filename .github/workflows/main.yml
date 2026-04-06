@@ -1,8 +1,9 @@
 name: Quet_Lich_Lam_Ha
+
 on:
   schedule:
-    - cron: '0 0 * * *' # Đúng 7h sáng VN nó tự thức dậy quét
-  workflow_dispatch: # Tạo cái nút để đại ca tự bấm chạy thử bất cứ lúc nào
+    - cron: '0 0 * * *' # Chạy lúc 7h sáng VN hàng ngày
+  workflow_dispatch: # Nút bấm chạy bằng tay
 
 jobs:
   run_bot:
@@ -16,10 +17,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install lib
+      - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 playwright selenium webdriver-manager
+          python -m pip install --upgrade pip
+          pip install pandas playwright beautifulsoup4 requests
+          # Bước quan trọng nhất: Cài trình duyệt và các thư viện hệ thống đi kèm
           playwright install chromium --with-deps
 
       - name: Run script
         run: python main.py
+        env:
+          PYTHONUNBUFFERED: 1
