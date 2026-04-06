@@ -1,65 +1,38 @@
-import asyncio
-from playwright.async_api import async_playwright
-from datetime import datetime, timedelta
-import urllib.request
-import urllib.parse
-
-# --- THÔNG TIN CHUẨN ---
-TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
-CHAT_ID = "7880436708"
-
-def send_telegram(message):
-    try:
-        msg = urllib.parse.quote(message)
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=HTML"
-        urllib.request.urlopen(url)
-    except: pass
-
-async def run():
-    async with async_playwright() as p:
-        # Dùng trình duyệt giả lập thiết bị di động để lách chặn
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 375, 'height': 812})
-        page = await context.new_page()
-        
-        try:
-            # Lùi 1 ngày để lấy cả lịch đang chạy
-            tu_ngay = (datetime.now() - timedelta(days=1)).strftime('%d/%m/%Y')
-            
-            # ĐƯỜNG DÂY NÓNG: Lấy trực tiếp từ cổng dữ liệu của Đội quản lý Lâm Hà
-            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi=PC15LL01&TuNgay={tu_ngay}&DenNgay=31/12/2026"
-            
-            # Truy cập trang chủ trước để lấy Cookie (tránh bị Unauthorized)
+try:
+            print("→ Đang quét đúng mã PB0306 (Lâm Hà) theo chỉ đạo của Đại ca...")
+            # Truy cập trang để lấy session
             await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle")
+            await asyncio.sleep(2)
+
+            tu_ngay = (datetime.now() - timedelta(days=2)).strftime('%d/%m/%Y')
             
-            # Gọi API lấy dữ liệu
+            # SỬ DỤNG MÃ CHUẨN ĐẠI CA VỪA SOI: PB03 (Lâm Đồng) và PB0306 (Lâm Hà)
+            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PB03&MaDonVi=PB0306&TuNgay={tu_ngay}&DenNgay=31/12/2026"
+            
             data = await page.evaluate(f'async () => {{ const r = await fetch("{api_url}"); return await r.json(); }}')
 
             if data and 'data' in data and len(data['data']) > 0:
-                msg = f"⚠️ <b>LỊCH CÚP ĐIỆN ĐỘI LÂM HÀ</b>\n--------------------------------\n"
-                for item in data['data'][:10]: # Lấy 10 lịch mới nhất
+                msg = f"⚠️ <b>LỊCH CÚP ĐIỆN LÂM HÀ (MÃ PB0306)</b>\n"
+                msg += "--------------------------------\n"
+                for item in data['data'][:10]:
                     msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
                     msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
-                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n--------------------------------\n"
+                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+                    msg += "--------------------------------\n"
                 send_telegram(msg)
+                print(f"✅ Đã tìm thấy {len(data['data'])} lịch!")
             else:
-                # Nếu mã Đội không ra, quét nốt mã Huyện
-                api_url_huyen = api_url.replace("PC15LL01", "PC15LL")
-                data_huyen = await page.evaluate(f'async () => {{ const r = await fetch("{api_url_huyen}"); return await r.json(); }}')
-                if data_huyen and 'data' in data_huyen and len(data_huyen['data']) > 0:
-                    msg = f"⚠️ <b>LỊCH CÚP ĐIỆN HUYỆN LÂM HÀ</b>\n--------------------------------\n"
-                    for item in data_huyen['data'][:10]:
-                        msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
-                        msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
-                        msg += "--------------------------------\n"
+                # Nếu vẫn không ra, quét rộng ra cả mã tỉnh PB03 rồi tự lọc
+                print("Thử quét toàn tỉnh PB03...")
+                api_url_tinh = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PB03&MaDonVi=PB03&TuNgay={tu_ngay}&DenNgay=31/12/2026"
+                data_tinh = await page.evaluate(f'async () => {{ const r = await fetch("{api_url_tinh}"); return await r.json(); }}')
+                
+                lich_loc = [i for i in data_tinh['data'] if "lâm hà" in str(i).lower()] if data_tinh else []
+                
+                if len(lich_loc) > 0:
+                    msg = f"⚠️ <b>LỊCH LÂM HÀ (QUÉT TỔNG TỈNH PB03)</b>\n"
+                    for i in lich_loc[:5]:
+                        msg += f"📍 {i.get('TenKhuVuc')}\n⏰ {i.get('ThoiGian')}\n---\n"
                     send_telegram(msg)
                 else:
-                    send_telegram("🚀 Bot vẫn chạy ổn nhưng EVN chưa cập nhật lịch mới lên hệ thống API.")
-
-        except Exception as e:
-            print(f"Lỗi: {e}")
-        finally:
-            await browser.close()
-
-if __name__ == "__main__":
-    asyncio.run(run())
+                    send_telegram("🚀 Đã đổi sang mã PB03 nhưng API vẫn chưa trả kết quả. Đại ca check xem web có đang bảo trì không?")
