@@ -1,56 +1,55 @@
 import asyncio
 from playwright.async_api import async_playwright
 from datetime import datetime
+import urllib.request
+import urllib.parse
+
+# --- ĐIỀN THÔNG TIN CỦA SẾP VÀO ĐÂY ---
+TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
+CHAT_ID = "7880436708"
+MA_DON_VI = "PC15LL" # Lâm Hà
+
+def send_telegram(message):
+    try:
+        msg = urllib.parse.quote(message)
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=HTML"
+        urllib.request.urlopen(url)
+        print("✅ Đã bắn tin nhắn về Telegram!")
+    except Exception as e:
+        print(f"❌ Lỗi gửi Telegram: {e}")
 
 async def run():
     async with async_playwright() as p:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] --- Đang khởi động Bot ---")
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-        )
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
         page = await context.new_page()
         
         try:
-            # 1. Truy cập trang để lấy "giấy thông hành" (Cookie)
-            print("→ Đang kết nối EVNSPC...")
-            await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=60000)
-            await asyncio.sleep(2)
-
-            # 2. Gọi API lấy dữ liệu thô (Dùng bọc try-except để không bị crash)
+            await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", timeout=60000)
             tu_ngay = datetime.now().strftime('%d/%m/%Y')
-            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi=PC15LL&TuNgay={tu_ngay}&DenNgay=31/12/2026"
+            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi={MA_DON_VI}&TuNgay={tu_ngay}&DenNgay=31/12/2026"
             
-            print(f"→ Đang quét lịch Lâm Hà từ ngày {tu_ngay}...")
+            # Lấy dữ liệu
+            data = await page.evaluate(f'async () => {{ const r = await fetch("{api_url}"); return await r.json(); }}')
             
-            # Thực thi fetch dữ liệu
-            response_json = await page.evaluate(f"""
-                async () => {{
-                    try {{
-                        const r = await fetch("{api_url}");
-                        if (!r.ok) return null;
-                        return await r.json();
-                    }} catch (e) {{ return null; }}
-                }}
-            """)
-
-            # 3. Xử lý kết quả
-            if response_json and 'data' in response_json and len(response_json['data']) > 0:
-                print(f"🎉 PHÁT HIỆN CÓ {len(response_json['data'])} LỊCH CÚP ĐIỆN TẠI LÂM HÀ!")
-                print("-" * 50)
-                for item in response_json['data']:
-                    print(f"📍 Khu vực: {item.get('TenKhuVuc', 'N/A')}")
-                    print(f"⏰ Thời gian: {item.get('ThoiGian', 'N/A')}")
-                    print(f"📝 Lý do: {item.get('LyDo', 'N/A')}")
-                    print("-" * 20)
+            if data and 'data' in data and len(data['data']) > 0:
+                msg = f"⚠️ <b>LỊCH CÚP ĐIỆN LÂM HÀ ({tu_ngay})</b>\n"
+                msg += "--------------------------------\n"
+                for item in data['data']:
+                    msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
+                    msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
+                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+                    msg += "--------------------------------\n"
+                send_telegram(msg)
             else:
-                print("✅ Hiện tại chưa ghi nhận lịch cúp điện mới cho Lâm Hà, đại ca yên tâm nhé!")
+                # Dòng này để sếp TEST xem bot có sống không. 
+                # Sau này chạy thật sếp có thể xóa dòng send_telegram ở dưới cho đỡ phiền.
+                send_telegram(f"✅ <b>BOT BÁO CÁO:</b>\nHôm nay Lâm Hà bình yên, chưa có lịch cúp điện mới đại ca nhé!")
 
         except Exception as e:
-            print(f"❌ Có chút trục trặc nhỏ: {e}")
+            send_telegram(f"❌ Lỗi Bot: {e}")
         finally:
             await browser.close()
-            print("\n--- Hoàn thành. Bấm phím bất kỳ để tắt bảng ---")
 
 if __name__ == "__main__":
     asyncio.run(run())
