@@ -4,7 +4,7 @@ from datetime import datetime
 import urllib.request
 import urllib.parse
 
-# --- THÔNG TIN CHUẨN ---
+# --- THÔNG TIN CẤU HÌNH ---
 TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 
@@ -17,56 +17,49 @@ def send_telegram(message):
 
 async def run():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        # Giả lập máy tính thật để tránh bị chặn
-        context = await browser.new_context(viewport={'width': 1280, 'height': 1200})
+        # Chạy ẩn (True) nếu đưa lên GitHub, hiện hình (False) nếu chạy máy sếp
+        browser = await p.chromium.launch(headless=False) 
+        context = await browser.new_context(viewport={'width': 1366, 'height': 768})
         page = await context.new_page()
         
         try:
-            print("→ Đang truy cập trực tiếp diện mạo web EVN...")
-            await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=60000)
+            url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
+            await page.goto(url, wait_until="networkidle")
             
-            # Tự tay điền mã PB03 và PB0306 như sếp chỉ
+            # 1. Click Tab 2 theo ID sếp soi
+            await page.click("#tab-tab2")
+            await asyncio.sleep(2)
+
+            # 2. Chọn Tỉnh (PB03) và Huyện (PB0306)
             await page.select_option("#idCongTyDienLuc", "PB03")
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
             await page.select_option("#idDienLuc", "PB0306")
-            await asyncio.sleep(2)
             
-            # Nhấn nút tra cứu
-            await page.click("#btnTraCuu")
-            await asyncio.sleep(5) # Đợi nó nạp bảng
+            # 3. Đợi vùng dữ liệu sếp vừa gửi hiện ra
+            print("→ Đang đợi dữ liệu từ vùng idThongTinLichNgungGiamMaDonVi...")
+            target_id = "#idThongTinLichNgungGiamMaDonVi"
+            await page.wait_for_selector(target_id)
+            await asyncio.sleep(5) # Chờ nạp nội dung bên trong
 
-            # CHIÊU MỚI: Quét trực tiếp các hàng (Row) trong bảng hiển thị
-            rows = await page.query_selector_all("table tbody tr")
+            # 4. Hốt trọn ổ dữ liệu
+            nội_dung = await page.inner_text(target_id)
             
-            if len(rows) > 0:
-                ket_qua = []
-                for row in rows:
-                    cells = await row.query_selector_all("td")
-                    if len(cells) >= 5:
-                        khu_vuc = await cells[2].inner_text()
-                        thoi_gian = await cells[3].inner_text()
-                        ly_do = await cells[4].inner_text()
-                        ket_qua.append(f"📍 <b>{khu_vuc.strip()}</b>\n⏰ {thoi_gian.strip()}\n📝 {ly_do.strip()}")
-
-                if ket_qua:
-                    msg = f"⚠️ <b>LỊCH CÚP ĐIỆN LÂM HÀ (QUÉT TRỰC TIẾP)</b>\n"
-                    msg += f"📅 Cập nhật: {datetime.now().strftime('%H:%M %d/%m')}\n"
-                    msg += "--------------------------------\n"
-                    msg += "\n--------------------------------\n".join(ket_qua[:8]) # Lấy 8 cái mới nhất
-                    send_telegram(msg)
-                    print("✅ Đã tóm được lịch từ bảng web!")
-                else:
-                    send_telegram("🚀 Đã vào được bảng nhưng có vẻ chưa có lịch mới cho Lâm Hà đại ca ạ.")
+            if "KHU VỰC" in nội_dung.upper():
+                # Xử lý chuỗi để gửi Telegram cho đẹp
+                msg = f"⚡ <b>LỊCH CÚP ĐIỆN LÂM HÀ</b>\n"
+                msg += f"⏰ Cập nhật: {datetime.now().strftime('%H:%M %d/%m/%Y')}\n"
+                msg += "--------------------------------\n"
+                msg += nội_dung.strip()
+                
+                send_telegram(msg[:4000]) # Giới hạn ký tự Telegram
+                print("✅ Đã bắn lịch chuẩn về Telegram!")
             else:
-                send_telegram("❌ Web hiện bảng trống hoặc bị lỗi hiển thị rồi sếp ơi.")
+                print("⚠️ Vùng dữ liệu trống hoặc không có lịch mới.")
 
         except Exception as e:
-            print(f"Lỗi: {e}")
-            # Nếu lỗi, chụp cái ảnh màn hình gửi Telegram cho sếp xem luôn
-            await page.screenshot(path="error.png")
-            send_telegram(f"❌ Bot bị 'loạn thị' do: {str(e)[:50]}")
+            print(f"❌ Lỗi: {e}")
         finally:
+            await asyncio.sleep(10)
             await browser.close()
 
 if __name__ == "__main__":
