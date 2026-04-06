@@ -1,10 +1,10 @@
 import asyncio
 from playwright.async_api import async_playwright
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.request
 import urllib.parse
 
-# --- THÔNG TIN CHUẨN CỦA ĐẠI CA ---
+# --- THÔNG TIN CHUẨN ---
 TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 
@@ -13,67 +13,51 @@ def send_telegram(message):
         msg = urllib.parse.quote(message)
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=HTML"
         urllib.request.urlopen(url)
-    except Exception as e:
-        print(f"❌ Lỗi Telegram: {e}")
+    except: pass
 
 async def run():
     async with async_playwright() as p:
+        # Dùng trình duyệt giả lập thiết bị di động để lách chặn
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+        context = await browser.new_context(viewport={'width': 375, 'height': 812})
         page = await context.new_page()
         
         try:
-            print("→ Đang truy quét trực tiếp trên giao diện web...")
-            await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=90000)
+            # Lùi 1 ngày để lấy cả lịch đang chạy
+            tu_ngay = (datetime.now() - timedelta(days=1)).strftime('%d/%m/%Y')
             
-            # Bước 1: Chọn tỉnh Lâm Đồng
-            await page.select_option("#MaDonViCha", "PC15")
-            await asyncio.sleep(2)
+            # ĐƯỜNG DÂY NÓNG: Lấy trực tiếp từ cổng dữ liệu của Đội quản lý Lâm Hà
+            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi=PC15LL01&TuNgay={tu_ngay}&DenNgay=31/12/2026"
             
-            # Bước 2: Chọn Điện lực Lâm Hà (Mã này bao gồm cả các đội quản lý)
-            await page.select_option("#MaDonVi", "PC15LL")
-            await asyncio.sleep(2)
+            # Truy cập trang chủ trước để lấy Cookie (tránh bị Unauthorized)
+            await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle")
             
-            # Bước 3: Nhấn nút Tra cứu
-            await page.click("#btTraCuu")
-            await asyncio.sleep(5) # Đợi bảng hiện ra
+            # Gọi API lấy dữ liệu
+            data = await page.evaluate(f'async () => {{ const r = await fetch("{api_url}"); return await r.json(); }}')
 
-            # Bước 4: Quét trực tiếp dữ liệu từ bảng (Table)
-            rows = await page.query_selector_all("table#DungCungCapDienTable tbody tr")
-            
-            lich_moi = []
-            for row in rows:
-                cols = await row.query_selector_all("td")
-                if len(cols) >= 5:
-                    area = await cols[2].inner_text() # Khu vực
-                    time = await cols[3].inner_text() # Thời gian
-                    reason = await cols[4].inner_text() # Lý do
-                    lich_moi.append({
-                        "area": area.strip(),
-                        "time": time.strip(),
-                        "reason": reason.strip()
-                    })
-
-            if len(lich_moi) > 0:
-                msg = f"⚠️ <b>PHÁT HIỆN {len(lich_moi)} LỊCH CÚP ĐIỆN LÂM HÀ!</b>\n"
-                msg += "--------------------------------\n"
-                for item in lich_moi[:8]: # Gửi 8 cái đầu tiên
-                    msg += f"📍 <b>Khu vực:</b> {item['area']}\n"
-                    msg += f"⏰ <b>Thời gian:</b> {item['time']}\n"
-                    msg += f"📝 <b>Lý do:</b> {item['reason']}\n"
-                    msg += "--------------------------------\n"
-                
-                if len(lich_moi) > 8:
-                    msg += f"<i>... và còn {len(lich_moi)-8} lịch khác trên hệ thống.</i>"
-                
+            if data and 'data' in data and len(data['data']) > 0:
+                msg = f"⚠️ <b>LỊCH CÚP ĐIỆN ĐỘI LÂM HÀ</b>\n--------------------------------\n"
+                for item in data['data'][:10]: # Lấy 10 lịch mới nhất
+                    msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
+                    msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
+                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n--------------------------------\n"
                 send_telegram(msg)
-                print(f"✅ Đã gửi {len(lich_moi)} lịch về Telegram.")
             else:
-                send_telegram("✅ Đã quét giao diện web: Hiện tại chưa thấy lịch mới được hiển thị.")
+                # Nếu mã Đội không ra, quét nốt mã Huyện
+                api_url_huyen = api_url.replace("PC15LL01", "PC15LL")
+                data_huyen = await page.evaluate(f'async () => {{ const r = await fetch("{api_url_huyen}"); return await r.json(); }}')
+                if data_huyen and 'data' in data_huyen and len(data_huyen['data']) > 0:
+                    msg = f"⚠️ <b>LỊCH CÚP ĐIỆN HUYỆN LÂM HÀ</b>\n--------------------------------\n"
+                    for item in data_huyen['data'][:10]:
+                        msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
+                        msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
+                        msg += "--------------------------------\n"
+                    send_telegram(msg)
+                else:
+                    send_telegram("🚀 Bot vẫn chạy ổn nhưng EVN chưa cập nhật lịch mới lên hệ thống API.")
 
         except Exception as e:
             print(f"Lỗi: {e}")
-            send_telegram(f"❌ Bot gặp lỗi khi quét web: {e}")
         finally:
             await browser.close()
 
