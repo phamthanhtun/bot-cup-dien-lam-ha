@@ -1,9 +1,8 @@
 import asyncio
 from playwright.async_api import async_playwright
-from datetime import datetime, timedelta
+from datetime import datetime
 import urllib.request
 import urllib.parse
-import json
 
 # --- THÔNG TIN CHUẨN ---
 TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
@@ -18,68 +17,55 @@ def send_telegram(message):
 
 async def run():
     async with async_playwright() as p:
-        # Giả lập Chrome xịn trên Windows
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-        )
+        # Giả lập máy tính thật để tránh bị chặn
+        context = await browser.new_context(viewport={'width': 1280, 'height': 1200})
         page = await context.new_page()
         
         try:
-            # Bước 1: Truy cập trang chủ để lấy Cookie (Cực kỳ quan trọng để không bị lỗi JSON)
+            print("→ Đang truy cập trực tiếp diện mạo web EVN...")
             await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=60000)
-            await asyncio.sleep(5)
-
-            # Bước 2: Chuẩn bị tham số (Mã PB03/PB0306 đại ca đã soi)
-            tu_ngay = (datetime.now() - timedelta(days=2)).strftime('%d/%m/%Y')
-            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PB03&MaDonVi=PB0306&TuNgay={tu_ngay}&DenNgay=31/12/2026"
             
-            # Bước 3: Dùng chiêu Page.evaluate nhưng bọc trong Try/Catch để tránh crash JSON
-            raw_data = await page.evaluate(f"""
-                async () => {{
-                    try {{
-                        const response = await fetch("{api_url}");
-                        if (!response.ok) return null;
-                        return await response.json();
-                    }} catch (e) {{
-                        return null;
-                    }}
-                }}
-            """)
+            # Tự tay điền mã PB03 và PB0306 như sếp chỉ
+            await page.select_option("#idCongTyDienLuc", "PB03")
+            await asyncio.sleep(2)
+            await page.select_option("#idDienLuc", "PB0306")
+            await asyncio.sleep(2)
+            
+            # Nhấn nút tra cứu
+            await page.click("#btnTraCuu")
+            await asyncio.sleep(5) # Đợi nó nạp bảng
 
-            if raw_data and 'data' in raw_data and len(raw_data['data']) > 0:
-                lich_list = raw_data['data']
-                msg = f"⚠️ <b>LỊCH CÚP ĐIỆN LÂM HÀ (Mã PB0306)</b>\n"
-                msg += f"📅 Cập nhật: {datetime.now().strftime('%H:%M %d/%m')}\n"
-                msg += "--------------------------------\n"
-                
-                # Chỉ lấy những lịch từ hôm nay trở đi để sếp đỡ bị rác máy
-                ngay_hien_tai = datetime.now()
-                for item in lich_list[:10]:
-                    msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
-                    msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
-                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+            # CHIÊU MỚI: Quét trực tiếp các hàng (Row) trong bảng hiển thị
+            rows = await page.query_selector_all("table tbody tr")
+            
+            if len(rows) > 0:
+                ket_qua = []
+                for row in rows:
+                    cells = await row.query_selector_all("td")
+                    if len(cells) >= 5:
+                        khu_vuc = await cells[2].inner_text()
+                        thoi_gian = await cells[3].inner_text()
+                        ly_do = await cells[4].inner_text()
+                        ket_qua.append(f"📍 <b>{khu_vuc.strip()}</b>\n⏰ {thoi_gian.strip()}\n📝 {ly_do.strip()}")
+
+                if ket_qua:
+                    msg = f"⚠️ <b>LỊCH CÚP ĐIỆN LÂM HÀ (QUÉT TRỰC TIẾP)</b>\n"
+                    msg += f"📅 Cập nhật: {datetime.now().strftime('%H:%M %d/%m')}\n"
                     msg += "--------------------------------\n"
-                
-                send_telegram(msg)
-                print(f"✅ Đã tìm thấy {len(lich_list)} lịch!")
+                    msg += "\n--------------------------------\n".join(ket_qua[:8]) # Lấy 8 cái mới nhất
+                    send_telegram(msg)
+                    print("✅ Đã tóm được lịch từ bảng web!")
+                else:
+                    send_telegram("🚀 Đã vào được bảng nhưng có vẻ chưa có lịch mới cho Lâm Hà đại ca ạ.")
             else:
-                # Phương án 2: Quét toàn tỉnh PB03 nếu huyện báo trống
-                api_url_tinh = api_url.replace("MaDonVi=PB0306", "MaDonVi=PB03")
-                data_tinh = await page.evaluate(f'async () => {{ const r = await fetch("{api_url_tinh}"); return await r.json(); }}')
-                
-                if data_tinh and 'data' in data_tinh:
-                    lich_loc = [i for i in data_tinh['data'] if "lâm hà" in str(i).lower()]
-                    if len(lich_loc) > 0:
-                        msg = f"⚠️ <b>LỊCH LÂM HÀ (QUÉT TỪ MÃ PB03)</b>\n"
-                        for i in lich_loc[:5]:
-                            msg += f"📍 {i.get('TenKhuVuc')}\n⏰ {i.get('ThoiGian')}\n---\n"
-                        send_telegram(msg)
-                    else:
-                        print("Không tìm thấy lịch Lâm Hà trong mã PB03.")
-                
+                send_telegram("❌ Web hiện bảng trống hoặc bị lỗi hiển thị rồi sếp ơi.")
+
         except Exception as e:
-            print(f"Lỗi hệ thống: {e}")
+            print(f"Lỗi: {e}")
+            # Nếu lỗi, chụp cái ảnh màn hình gửi Telegram cho sếp xem luôn
+            await page.screenshot(path="error.png")
+            send_telegram(f"❌ Bot bị 'loạn thị' do: {str(e)[:50]}")
         finally:
             await browser.close()
 
