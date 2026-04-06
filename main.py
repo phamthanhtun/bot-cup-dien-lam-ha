@@ -4,8 +4,8 @@ from datetime import datetime
 import urllib.request
 import urllib.parse
 
-# --- THÔNG TIN CỦA ĐẠI CA ---
-TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCR1254"
+# --- THÔNG TIN CHUẨN CỦA ĐẠI CA ---
+TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 MA_DON_VI = "PC15LL"
 
@@ -14,9 +14,9 @@ def send_telegram(message):
         msg = urllib.parse.quote(message)
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=HTML"
         urllib.request.urlopen(url)
-        print("✅ Gửi Telegram thành công!")
+        print("✅ Đã gửi báo cáo về Telegram!")
     except Exception as e:
-        print(f"❌ Lỗi gửi Telegram: {e}")
+        print(f"❌ Lỗi Telegram: {e}")
 
 async def run():
     async with async_playwright() as p:
@@ -53,12 +53,10 @@ async def run():
                     msg += "--------------------------------\n"
                 send_telegram(msg)
             else:
-                # Ép gửi tin nhắn báo cáo để sếp biết bot đã thông suốt
-                send_telegram(f"✅ <b>BOT BÁO CÁO:</b>\nKết nối chuẩn rồi đại ca! Hiện tại chưa có lịch mới tại Lâm Hà.")
+                send_telegram(f"🚀 <b>KẾT NỐI THÀNH CÔNG!</b>\nChào đại ca, bot đã trực chiến. Hiện tại Lâm Hà chưa có lịch cúp điện mới.")
 
         except Exception as e:
             print(f"Lỗi: {e}")
-            send_telegram(f"❌ Bot lỗi kỹ thuật: {e}")
         finally:
             await browser.close()
 
