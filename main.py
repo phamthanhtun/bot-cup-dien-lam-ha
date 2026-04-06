@@ -1,6 +1,6 @@
 import asyncio
 from playwright.async_api import async_playwright
-from datetime import datetime, timedelta
+from datetime import datetime
 import urllib.request
 import urllib.parse
 
@@ -23,71 +23,57 @@ async def run():
         page = await context.new_page()
         
         try:
-            print("→ Đang truy cập hệ thống EVNSPC...")
+            print("→ Đang truy quét trực tiếp trên giao diện web...")
             await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=90000)
-            await asyncio.sleep(5) 
-
-            # LÙI 2 NGÀY ĐỂ TÓM CẢ LỊCH VỪA DIỄN RA
-            tu_ngay = (datetime.now() - timedelta(days=2)).strftime('%d/%m/%Y')
             
-            # CHIÊU MỚI: Quét đồng thời cả mã huyện và mã đội quản lý
-            # PC15LL: Điện lực Lâm Hà | PC15LL01: Đội quản lý điện Lâm Hà
-            danh_sach_ma = ["PC15LL", "PC15LL01", "PC15LL02", "PC15LL03"]
+            # Bước 1: Chọn tỉnh Lâm Đồng
+            await page.select_option("#MaDonViCha", "PC15")
+            await asyncio.sleep(2)
             
-            ket_qua_tong = []
+            # Bước 2: Chọn Điện lực Lâm Hà (Mã này bao gồm cả các đội quản lý)
+            await page.select_option("#MaDonVi", "PC15LL")
+            await asyncio.sleep(2)
             
-            for ma in danh_sach_ma:
-                api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi={ma}&TuNgay={tu_ngay}&DenNgay=31/12/2026"
-                
-                data = await page.evaluate(f"""
-                    async () => {{
-                        try {{
-                            const response = await fetch("{api_url}");
-                            const result = await response.json();
-                            return result;
-                        }} catch (e) {{
-                            return null;
-                        }}
-                    }}
-                """)
-                
-                if data and 'data' in data:
-                    ket_qua_tong.extend(data['data'])
+            # Bước 3: Nhấn nút Tra cứu
+            await page.click("#btTraCuu")
+            await asyncio.sleep(5) # Đợi bảng hiện ra
 
-            # Lọc bỏ trùng lặp (nếu có)
-            seen = set()
-            lich_duy_nhat = []
-            for item in ket_qua_tong:
-                identifier = f"{item.get('ThoiGian')}-{item.get('TenKhuVuc')}"
-                if identifier not in seen:
-                    lich_duy_nhat.append(item)
-                    seen.add(identifier)
+            # Bước 4: Quét trực tiếp dữ liệu từ bảng (Table)
+            rows = await page.query_selector_all("table#DungCungCapDienTable tbody tr")
+            
+            lich_moi = []
+            for row in rows:
+                cols = await row.query_selector_all("td")
+                if len(cols) >= 5:
+                    area = await cols[2].inner_text() # Khu vực
+                    time = await cols[3].inner_text() # Thời gian
+                    reason = await cols[4].inner_text() # Lý do
+                    lich_moi.append({
+                        "area": area.strip(),
+                        "time": time.strip(),
+                        "reason": reason.strip()
+                    })
 
-            if len(lich_duy_nhat) > 0:
-                # Sắp xếp theo thời gian
-                lich_duy_nhat.sort(key=lambda x: x.get('ThoiGian', ''))
-                
-                msg = f"⚠️ <b>PHÁT HIỆN LỊCH CÚP ĐIỆN LÂM HÀ!</b>\n"
-                msg += f"📅 <i>Dữ liệu cập nhật: {datetime.now().strftime('%H:%M %d/%m')}</i>\n"
+            if len(lich_moi) > 0:
+                msg = f"⚠️ <b>PHÁT HIỆN {len(lich_moi)} LỊCH CÚP ĐIỆN LÂM HÀ!</b>\n"
                 msg += "--------------------------------\n"
-                
-                # Gửi tối đa 8 lịch mới nhất để không bị quá tải tin nhắn
-                for item in lich_duy_nhat[:8]:
-                    msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
-                    msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
-                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+                for item in lich_moi[:8]: # Gửi 8 cái đầu tiên
+                    msg += f"📍 <b>Khu vực:</b> {item['area']}\n"
+                    msg += f"⏰ <b>Thời gian:</b> {item['time']}\n"
+                    msg += f"📝 <b>Lý do:</b> {item['reason']}\n"
                     msg += "--------------------------------\n"
                 
-                if len(lich_duy_nhat) > 8:
-                    msg += f"<i>... và còn {len(lich_duy_nhat)-8} lịch khác sếp nhé!</i>"
+                if len(lich_moi) > 8:
+                    msg += f"<i>... và còn {len(lich_moi)-8} lịch khác trên hệ thống.</i>"
                 
                 send_telegram(msg)
-                print(f"✅ Đã tìm thấy {len(lich_duy_nhat)} lịch!")
+                print(f"✅ Đã gửi {len(lich_moi)} lịch về Telegram.")
             else:
-                print("Vẫn chưa thấy lịch trên hệ thống API.")
+                send_telegram("✅ Đã quét giao diện web: Hiện tại chưa thấy lịch mới được hiển thị.")
 
         except Exception as e:
             print(f"Lỗi: {e}")
+            send_telegram(f"❌ Bot gặp lỗi khi quét web: {e}")
         finally:
             await browser.close()
 
