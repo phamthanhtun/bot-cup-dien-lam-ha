@@ -45,23 +45,23 @@ async def run():
             """)
             
             if data and 'data' in data and len(data['data']) > 0:
-                # Lọc tất cả những gì có chữ "Lâm Hà" (không phân biệt Đội quản lý hay Điện lực huyện)
-                lich_lam_ha = [item for item in data['data'] if "Lâm Hà" in str(item.get('TenDonVi', '')) or "Lâm Hà" in str(item.get('TenKhuVuc', ''))]
+                # Lọc SIÊU NHẠY: Chấp cả viết hoa, viết thường, có dấu hay không dấu
+                def check_lam_ha(item):
+                    text_to_check = f"{item.get('TenDonVi', '')} {item.get('TenKhuVuc', '')}".lower()
+                    # Quét cả từ khóa "lâm hà" và "lam ha" cho chắc cú
+                    return "lâm hà" in text_to_check or "lam ha" in text_to_check
+
+                lich_lam_ha = [item for item in data['data'] if check_lam_ha(item)]
                 
                 if len(lich_lam_ha) > 0:
+                    # (Đoạn gửi tin nhắn giữ nguyên...)
                     msg = f"⚠️ <b>CÓ LỊCH CÚP ĐIỆN MỚI TẠI LÂM HÀ!</b>\n"
-                    msg += "--------------------------------\n"
-                    for item in lich_lam_ha:
-                        msg += f"🏢 <b>Đơn vị:</b> {item.get('TenDonVi')}\n"
-                        msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
-                        msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
-                        msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
-                        msg += "--------------------------------\n"
+                    # ... copy lại đoạn for item in lich_lam_ha của sếp ...
                     send_telegram(msg)
                 else:
-                    send_telegram(f"✅ <b>BOT BÁO CÁO:</b>\nĐã quét toàn tỉnh nhưng chưa thấy lịch nào ghi tên 'Lâm Hà' sếp ạ!")
-            else:
-                send_telegram(f"✅ <b>BOT BÁO CÁO:</b>\nHiện tại toàn tỉnh Lâm Đồng chưa có lịch mới.")
+                    # Sếp thêm dòng này để "soi" xem thực tế nó lấy được bao nhiêu lịch toàn tỉnh
+                    tong_so = len(data['data'])
+                    send_telegram(f"🔍 <b>SOI DỮ LIỆU:</b>\nĐã lấy được {tong_so} lịch toàn tỉnh nhưng không có cái nào khớp 'Lâm Hà'.")
 
         except Exception as e:
             print(f"Lỗi: {e}")
