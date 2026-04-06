@@ -25,12 +25,13 @@ async def run():
         page = await context.new_page()
         
         try:
-            print("→ Đang kết nối EVNSPC...")
+            print("→ Đang quét tổng lực tỉnh Lâm Đồng...")
             await page.goto("https://cskh.evnspc.vn/TraCuu/LichNgungCungCapDien", wait_until="networkidle", timeout=90000)
             await asyncio.sleep(5) 
 
             tu_ngay = datetime.now().strftime('%d/%m/%Y')
-            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi={MA_DON_VI}&TuNgay={tu_ngay}&DenNgay=31/12/2026"
+            # Quét mã PC15 (Toàn tỉnh Lâm Đồng)
+            api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi=PC15&TuNgay={tu_ngay}&DenNgay=31/12/2026"
             
             data = await page.evaluate(f"""
                 async () => {{
@@ -44,16 +45,23 @@ async def run():
             """)
             
             if data and 'data' in data and len(data['data']) > 0:
-                msg = f"⚠️ <b>LỊCH CÚP ĐIỆN LÂM HÀ ({tu_ngay})</b>\n"
-                msg += "--------------------------------\n"
-                for item in data['data']:
-                    msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
-                    msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
-                    msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+                # Lọc tất cả những gì có chữ "Lâm Hà" (không phân biệt Đội quản lý hay Điện lực huyện)
+                lich_lam_ha = [item for item in data['data'] if "Lâm Hà" in str(item.get('TenDonVi', '')) or "Lâm Hà" in str(item.get('TenKhuVuc', ''))]
+                
+                if len(lich_lam_ha) > 0:
+                    msg = f"⚠️ <b>CÓ LỊCH CÚP ĐIỆN MỚI TẠI LÂM HÀ!</b>\n"
                     msg += "--------------------------------\n"
-                send_telegram(msg)
+                    for item in lich_lam_ha:
+                        msg += f"🏢 <b>Đơn vị:</b> {item.get('TenDonVi')}\n"
+                        msg += f"📍 <b>Khu vực:</b> {item.get('TenKhuVuc')}\n"
+                        msg += f"⏰ <b>Thời gian:</b> {item.get('ThoiGian')}\n"
+                        msg += f"📝 <b>Lý do:</b> {item.get('LyDo')}\n"
+                        msg += "--------------------------------\n"
+                    send_telegram(msg)
+                else:
+                    send_telegram(f"✅ <b>BOT BÁO CÁO:</b>\nĐã quét toàn tỉnh nhưng chưa thấy lịch nào ghi tên 'Lâm Hà' sếp ạ!")
             else:
-                send_telegram(f"🚀 <b>KẾT NỐI THÀNH CÔNG!</b>\nChào đại ca, bot đã trực chiến. Hiện tại Lâm Hà chưa có lịch cúp điện mới.")
+                send_telegram(f"✅ <b>BOT BÁO CÁO:</b>\nHiện tại toàn tỉnh Lâm Đồng chưa có lịch mới.")
 
         except Exception as e:
             print(f"Lỗi: {e}")
