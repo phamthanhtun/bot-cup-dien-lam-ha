@@ -18,7 +18,7 @@ async def run():
             await asyncio.sleep(2)
 
             # 2. Gọi API lấy dữ liệu thô (Dùng bọc try-except để không bị crash)
-            tu_ngay = "01/04/2026"
+            tu_ngay = "01/01/2026"
             api_url = f"https://cskh.evnspc.vn/TraCuu/LayDuLieuLichNgungCungCapDien?MaDonViCha=PC15&MaDonVi=PC15LL&TuNgay={tu_ngay}&DenNgay=31/12/2026"
             
             print(f"→ Đang quét lịch Lâm Hà từ ngày {tu_ngay}...")
