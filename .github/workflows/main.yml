@@ -1,20 +1,26 @@
-name: Quet_Lich_Lam_Ha
+name: Quet_Lich_Lam_Ha_Tu_Dong
+
 on:
-  workflow_dispatch: # Để sếp bấm nút chạy tay cho sướng
   schedule:
-    - cron: '0 0 * * *' # Tự chạy lúc 7h sáng VN
+    - cron: '0 0 * * *' # Chạy lúc 7h sáng giờ VN
+  workflow_dispatch: # Nút bấm chạy tay cho sếp
 
 jobs:
   run_bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install lib
+
+      - name: Install dependencies
         run: |
-          pip install pandas playwright beautifulsoup4
+          pip install playwright pandas
           playwright install chromium --with-deps
-      - name: Run script
+
+      - name: Run Bot
         run: python main.py
