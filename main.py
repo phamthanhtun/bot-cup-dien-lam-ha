@@ -11,10 +11,9 @@ TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 LOG_FILE = "sent_logs.txt"
 
-# Danh sách Thôn và Xã sếp muốn canh gác
+# ĐÃ ĐỔI SANG ĐÔNG ANH - NAM BAN ĐỂ ĐẠI CA TEST
 WATCH_AREAS = [
-    {"thon": "Đông Anh", "xa": "Nam Ban Lâm Hà"},
-    {"thon": "Đông Anh", "xa": "Nam Ban Lâm Hà"}
+    {"thon": "Đông Anh", "xa": "Nam Ban"}
 ]
 
 def send_telegram(message):
@@ -26,7 +25,6 @@ def send_telegram(message):
         print(f"❌ Lỗi gửi Tele: {e}")
 
 def is_new_event(content):
-    """Kiểm tra xem lịch đã gửi chưa để tránh spam"""
     event_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, "w") as f: pass
@@ -42,7 +40,6 @@ def is_new_event(content):
 
 async def run():
     async with async_playwright() as p:
-        # Chạy ẩn danh trên GitHub
         browser = await p.chromium.launch(headless=True) 
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -52,27 +49,21 @@ async def run():
         
         try:
             url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
-            print(f"→ Đang tiến quân vào EVN...")
+            print(f"→ Đang tiến quân vào EVN để test Đông Anh - Nam Ban...")
             await page.goto(url, wait_until="networkidle", timeout=60000)
             
-            # 1. Click Tab 2 (Tra cứu theo đơn vị)
             await page.wait_for_selector("#tab-tab2")
             await page.click("#tab-tab2")
             await asyncio.sleep(3)
 
-            # 2. Chọn Công ty Điện lực Lâm Đồng (PB03)
             await page.select_option("#idCongTyDienLuc", "PB03")
             await asyncio.sleep(4)
-            
-            # 3. Chọn Điện lực Lâm Hà (PB0306)
             await page.select_option("#idDienLuc", "PB0306")
             
-            # 4. Đợi bảng dữ liệu nạp xong
             target_id = "#idThongTinLichNgungGiamMaDonVi"
             await page.wait_for_selector(target_id)
             await asyncio.sleep(7) 
 
-            # 5. Duyệt từng dòng để lọc thôn/xã cho đại ca
             rows = await page.query_selector_all(f"{target_id} table tbody tr")
             
             found_any = False
@@ -88,24 +79,4 @@ async def run():
                     if thon in clean_text.lower() and xa in clean_text.lower():
                         found_any = True
                         if is_new_event(clean_text):
-                            msg = (f"🔔 <b>CÓ LỊCH CÚP ĐIỆN MỚI</b>\n"
-                                   f"📍 <b>Khu vực:</b> {area['thon']} - {area['xa']}\n"
-                                   f"📝 <b>Chi tiết:</b> {clean_text}\n"
-                                   f"⏰ <b>Cập nhật:</b> {datetime.now().strftime('%H:%M %d/%m/%Y')}")
-                            send_telegram(msg)
-                            print(f"✅ Đã gửi Telegram lịch mới: {area['thon']}")
-                        break
-
-            if not found_any:
-                print("🏁 ĐÃ QUÉT XONG: Thôn Vinh Quang hiện không có lịch cúp điện mới.")
-            else:
-                print("🏁 ĐÃ QUÉT XONG: Đã xử lý các lịch tìm thấy.")
-
-        except Exception as e:
-            print(f"❌ Rà soát phát hiện lỗi: {e}")
-        finally:
-            await browser.close()
-            print("🔌 Đã đóng trình duyệt.")
-
-if __name__ == "__main__":
-    asyncio.run(run())
+                            msg = (f"⚡ <b>[TEST]
