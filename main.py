@@ -11,7 +11,7 @@ TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 LOG_FILE = "sent_logs.txt"
 
-# ĐÃ ĐỔI SANG ĐÔNG ANH - NAM BAN ĐỂ ĐẠI CA TEST
+# ĐỔI SANG ĐÔNG ANH - NAM BAN ĐỂ TEST
 WATCH_AREAS = [
     {"thon": "Đông Anh", "xa": "Nam Ban"}
 ]
@@ -49,7 +49,7 @@ async def run():
         
         try:
             url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
-            print(f"→ Đang tiến quân vào EVN để test Đông Anh - Nam Ban...")
+            print("→ Đang truy cập EVN để test Đông Anh - Nam Ban...")
             await page.goto(url, wait_until="networkidle", timeout=60000)
             
             await page.wait_for_selector("#tab-tab2")
@@ -79,4 +79,26 @@ async def run():
                     if thon in clean_text.lower() and xa in clean_text.lower():
                         found_any = True
                         if is_new_event(clean_text):
-                            msg = (f"⚡ <b>[TEST]
+                            # SỬA LỖI SYNTAX Ở ĐÂY
+                            msg = "⚡ <b>[TEST] LỊCH CÚP ĐIỆN ĐÔNG ANH</b>\n"
+                            msg += "📍 <b>Khu vực:</b> " + area['thon'] + " - " + area['xa'] + "\n"
+                            msg += "📝 <b>Chi tiết:</b> " + clean_text + "\n"
+                            msg += "⏰ <b>Cập nhật:</b> " + datetime.now().strftime('%H:%M %d/%m/%Y')
+                            
+                            send_telegram(msg)
+                            print("✅ Đã tìm thấy lịch Đông Anh và gửi Telegram!")
+                        else:
+                            print("⏭️ Lịch Đông Anh này đã gửi rồi.")
+                        break
+
+            if not found_any:
+                print("🏁 ĐÃ QUÉT XONG: Hiện tại khu vực test không có lịch cúp điện.")
+
+        except Exception as e:
+            print("❌ Lỗi: " + str(e))
+        finally:
+            await browser.close()
+            print("🔌 Đã đóng trình duyệt.")
+
+if __name__ == "__main__":
+    asyncio.run(run())
