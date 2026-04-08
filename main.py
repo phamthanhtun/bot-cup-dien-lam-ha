@@ -13,8 +13,8 @@ LOG_FILE = "sent_logs.txt"
 
 # Danh sách lọc chuẩn theo cặp để không nhầm xã
 WATCH_AREAS = [
-    {"thon": "đông anh", "xa": "nam ban"},
-    {"thon": "đông anh", "xa": "nam ban lam ha"}
+    {"thon": "Đông Anh", "xa": "Nam Ban Lâm Hà"},
+    {"thon": "Đông Anh", "xa": "Nam Ban Lâm Hà"}
 ]
 
 def send_telegram(message):
