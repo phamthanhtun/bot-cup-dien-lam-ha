@@ -11,8 +11,11 @@ TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 LOG_FILE = "sent_logs.txt"
 
-# Danh sách đại ca muốn lọc (Thêm bớt tùy ý sếp)
-WATCH_LIST = ["Vinh Quang", "Hoài Đức", "Tân Hà"]
+# Danh sách lọc chuẩn theo cặp để không nhầm xã
+WATCH_AREAS = [
+    {"thon": "Vinh Quang", "xa": "Hoài Đức"},
+    {"thon": "Vinh Quang", "xa": "Tân Hà"}
+]
 
 def send_telegram(message):
     try:
@@ -23,14 +26,12 @@ def send_telegram(message):
         print(f"Lỗi gửi Tele: {e}")
 
 def is_new_event(content):
-    """Kiểm tra xem lịch đã gửi chưa (dựa trên nội dung)"""
     event_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, "w") as f: pass
     
     with open(LOG_FILE, "r") as f:
-        log_content = f.read()
-        if event_hash in log_content:
+        if event_hash in f.read():
             return False
             
     with open(LOG_FILE, "a") as f:
@@ -41,56 +42,59 @@ async def run():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True) 
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-            viewport={'width': 1366, 'height': 768}
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
         
         try:
             url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
-            print(f"→ Đang truy cập EVN...")
+            print(f"→ Truy cập hệ thống...")
             await page.goto(url, wait_until="networkidle", timeout=60000)
             
-            # 1. Click Tab 2 (Giữ nguyên ID đang chạy OK của sếp)
+            # Bước 1: Chuyển Tab
             await page.wait_for_selector("#tab-tab2")
             await page.click("#tab-tab2")
             await asyncio.sleep(3)
 
-            # 2. Chọn Lâm Đồng (PB03)
+            # Bước 2: Chọn đơn vị (Sử dụng ID đại ca đã xác nhận OK)
             await page.select_option("#idCongTyDienLuc", "PB03")
             await asyncio.sleep(4)
-            
-            # 3. Chọn Lâm Hà (PB0306)
             await page.select_option("#idDienLuc", "PB0306")
             
-            # 4. Đợi nạp dữ liệu (ID vùng bảng sếp vừa gửi)
+            # Bước 3: Đợi bảng dữ liệu hiện ra hoàn toàn
             target_id = "#idThongTinLichNgungGiamMaDonVi"
             await page.wait_for_selector(target_id)
-            await asyncio.sleep(7) 
+            
+            # Cuộn nhẹ trang để kích hoạt nạp đầy đủ dữ liệu
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight/2)")
+            await asyncio.sleep(5) 
 
-            # 5. Duyệt từng dòng trong bảng để lọc
+            # Bước 4: Lấy dữ liệu cực kỳ cẩn thận
             rows = await page.query_selector_all(f"{target_id} table tbody tr")
             
-            found_count = 0
             for row in rows:
                 text = await row.inner_text()
-                # Kiểm tra nếu dòng có chứa khu vực đại ca quan tâm
-                if any(area.lower() in text.lower() for area in WATCH_LIST):
-                    if is_new_event(text):
-                        msg = f"🔔 <b>CÓ LỊCH CÚP ĐIỆN MỚI</b>\n"
-                        msg += f"📍 Chi tiết: {text.strip()}\n"
-                        msg += f"⏰ Cập nhật: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
-                        send_telegram(msg)
-                        print(f"✅ Đã gửi lịch: {text[:50]}...")
-                        found_count += 1
-                    else:
-                        print(f"⏭️ Đã biết lịch: {text[:30]}... (Bỏ qua)")
-
-            if found_count == 0:
-                print("⚠️ Không có lịch mới cho các khu vực đại ca theo dõi.")
+                clean_text = text.strip()
+                
+                if not clean_text: continue # Bỏ qua hàng trống
+                
+                # Logic lọc chính xác theo cặp Thôn - Xã
+                for area in WATCH_AREAS:
+                    thon = area["thon"].lower()
+                    xa = area["xa"].lower()
+                    
+                    if thon in clean_text.lower() and xa in clean_text.lower():
+                        if is_new_event(clean_text):
+                            msg = (f"🔔 <b>THÔNG BÁO CẮT ĐIỆN</b>\n"
+                                   f"📍 <b>Khu vực:</b> {area['thon']} - {area['xa']}\n"
+                                   f"📝 <b>Chi tiết:</b> {clean_text}\n"
+                                   f"⏰ <b>Cập nhật:</b> {datetime.now().strftime('%H:%M %d/%m/%Y')}")
+                            send_telegram(msg)
+                            print(f"✅ Đã báo cáo: {area['thon']}")
+                        break # Tìm thấy rồi thì không cần check cặp khác cho hàng này
 
         except Exception as e:
-            print(f"❌ Lỗi: {e}")
+            print(f"❌ Rà soát phát hiện lỗi: {e}")
         finally:
             await browser.close()
 
