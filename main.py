@@ -11,8 +11,8 @@ TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
 LOG_FILE = "sent_logs.txt"
 
-# ĐỂ TEST CHUẨN: CHỈ CẦN TÌM CHỮ "ĐÔNG ANH"
-TEST_KEYWORD = "Đông Anh"
+# TỪ KHÓA CHÍNH: VINH QUANG (Không phân biệt hoa thường)
+WATCH_KEYWORD = "Vinh Quang"
 
 def send_telegram(message):
     try:
@@ -41,7 +41,7 @@ async def run():
         page = await context.new_page()
         try:
             url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
-            print("🚀 Đang quét lịch cho đại ca...")
+            print("🚀 Bot bắt đầu tuần tra khu vực Vinh Quang...")
             await page.goto(url, wait_until="networkidle", timeout=60000)
             
             await page.wait_for_selector("#tab-tab2")
@@ -52,33 +52,30 @@ async def run():
             await asyncio.sleep(4)
             await page.select_option("#idDienLuc", "PB0306")
             
-            # Đợi nạp bảng dữ liệu
             target_id = "#idThongTinLichNgungGiamMaDonVi"
             await page.wait_for_selector(target_id)
             await asyncio.sleep(5) 
 
-            # Lấy toàn bộ văn bản trong bảng
+            # Hốt sạch dữ liệu bảng để tránh sót lịch
             content = await page.inner_text(target_id)
-            
-            # Tách nội dung thành từng đoạn dựa trên chữ "KHU VỰC:"
             events = content.split("KHU VỰC:")
             
             found_count = 0
             for ev in events:
-                if TEST_KEYWORD.lower() in ev.lower():
+                # Kiểm tra không phân biệt hoa thường
+                if WATCH_KEYWORD.lower() in ev.lower():
                     clean_ev = "KHU VỰC: " + ev.strip()
                     if is_new_event(clean_ev):
-                        msg = "⚡ <b>PHÁT HIỆN LỊCH CÚP ĐIỆN</b>\n"
-                        msg += "📍 <b>Khu vực:</b> " + TEST_KEYWORD + "\n"
-                        msg += "📝 " + clean_ev[:500] # Lấy 500 ký tự đầu cho gọn
+                        msg = "🔔 <b>THÔNG BÁO CÚP ĐIỆN VINH QUANG</b>\n"
+                        msg += "📝 " + clean_ev[:1000] # Gửi đầy đủ thông tin
                         send_telegram(msg)
-                        print("✅ Đã gửi Telegram lịch: " + TEST_KEYWORD)
+                        print("✅ Đã gửi Telegram lịch mới: " + WATCH_KEYWORD)
                         found_count += 1
             
             if found_count == 0:
-                print("🏁 Quét xong: Không thấy chữ '" + TEST_KEYWORD + "' trong bảng.")
+                print("🏁 Quét xong: Vinh Quang hiện tại bình yên, không có lịch cúp.")
             else:
-                print("🏁 Đã xử lý " + str(found_count) + " lịch mới.")
+                print("🏁 Đã xử lý xong " + str(found_count) + " thông báo mới.")
 
         except Exception as e:
             print("❌ Lỗi hệ thống: " + str(e))
