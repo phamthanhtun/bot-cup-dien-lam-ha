@@ -20,9 +20,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install playwright pandas openpyxl requests
           playwright install chromium
-          playwright install-deps
 
       - name: Run Bot
         run: python main.py
