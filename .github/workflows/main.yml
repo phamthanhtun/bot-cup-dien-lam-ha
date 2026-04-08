@@ -2,15 +2,16 @@ name: EVN Lam Ha Bot
 
 on:
   schedule:
-    # Chạy vào 7h sáng mỗi ngày (Giờ UTC là 00:00)
+    # Chạy 7h sáng mỗi ngày (Giờ UTC là 00:00)
     - cron: '0 0 * * *'
-  workflow_dispatch: # Cho phép đại ca bấm nút chạy tay bất cứ lúc nào
+  workflow_dispatch: # Cho phép bấm nút chạy tay
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Quyền cực kỳ quan trọng để lưu file log
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -23,8 +24,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install playwright pandas openpyxl requests
+          pip install playwright requests
           playwright install chromium
 
       - name: Run Bot
         run: python main.py
+
+      - name: Save logs and push to repo
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add sent_logs.txt || echo "No changes"
+          git commit -m "Update sent logs [skip ci]" || echo "No changes to commit"
+          git push
