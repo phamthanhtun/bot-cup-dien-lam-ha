@@ -1,88 +1,91 @@
 import asyncio
 from playwright.async_api import async_playwright
-import pandas as pd
-import hashlib
-import requests
+from datetime import datetime
+import urllib.request
+import urllib.parse
 import os
+import hashlib
 
-# --- CẤU HÌNH TELEGRAM ---
-TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
+# --- CẤU HÌNH ---
+TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
 CHAT_ID = "7880436708"
+LOG_FILE = "sent_logs.txt"
 
-# --- DANH SÁCH KHU VỰC CẦN THEO DÕI ---
-WATCH_LIST = {
-    "Vinh Quang": "Hoài Đức",
-    "Vinh Quang": "Tân Hà",
-}
+# Danh sách thôn/xã đại ca muốn lọc
+WATCH_LIST = ["Vinh Quang", "Hoài Đức", "Tân Hà"]
 
 def send_telegram(message):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
-        requests.post(url, json=payload)
+        msg = urllib.parse.quote(message)
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=HTML"
+        urllib.request.urlopen(url)
     except Exception as e:
-        print(f"❌ Lỗi gửi Telegram: {e}")
+        print(f"Lỗi gửi Tele: {e}")
 
-def is_new_event(event_str):
-    """Kiểm tra xem lịch này đã gửi chưa bằng cách so sánh mã Hash"""
-    # Tạo mã định danh duy nhất cho mỗi lịch (tránh trùng ngày/giờ/địa điểm)
-    event_hash = hashlib.md5(event_str.encode('utf-8')).hexdigest()
-    log_file = "sent_logs.txt"
+def is_new_event(content):
+    """Chỉ gửi nếu nội dung này chưa có trong log"""
+    event_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+    if not os.path.exists(LOG_FILE):
+        with open(LOG_FILE, "w") as f: pass
     
-    if not os.path.exists(log_file):
-        with open(log_file, "w") as f: f.write("")
-
-    with open(log_file, "r") as f:
-        sent_hashes = f.read().splitlines()
-
-    if event_hash not in sent_hashes:
-        with open(log_file, "a") as f:
-            f.write(event_hash + "\n")
-        return True
-    return False
+    with open(LOG_FILE, "r") as f:
+        if event_hash in f.read():
+            return False
+            
+    with open(LOG_FILE, "a") as f:
+        f.write(event_hash + "\n")
+    return True
 
 async def run():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True) # Chạy ẩn cho chuyên nghiệp
-        page = await browser.new_page()
-
-        url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
-        await page.goto(url, wait_until="networkidle")
-
-        await page.click("#tab-tab2")
-        await asyncio.sleep(1)
-        await page.select_option("#Id_DonViPhanPhoi", label="Công ty Điện lực Lâm Đồng")
-        await page.select_option("#Id_DonViQuanLy", value="PB0306")
-        await asyncio.sleep(3)
-
-        rows = await page.query_selector_all("#LichNgungCungCapDienKhuVuc table tbody tr")
+        browser = await p.chromium.launch(headless=True) 
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
         
-        for row in rows:
-            cols = await row.query_selector_all("td")
-            if len(cols) >= 5:
-                ngay = await cols[1].inner_text()
-                gio = await cols[2].inner_text()
-                dia_diem = await cols[3].inner_text()
-                ly_do = await cols[4].inner_text()
-                
-                for thon, xa in WATCH_LIST.items():
-                    if thon.lower() in dia_diem.lower() and xa.lower() in dia_diem.lower():
-                        # Tạo chuỗi nội dung để kiểm tra trùng
-                        content = f"{ngay}-{gio}-{dia_diem}"
-                        
-                        if is_new_event(content):
-                            msg = (f"🔔 <b>CÓ LỊCH CÚP ĐIỆN MỚI!</b>\n"
-                                   f"📍 Khu vực: {thon} - {xa}\n"
-                                   f"📅 Ngày: {ngay}\n"
-                                   f"⏰ Giờ: {gio}\n"
-                                   f"🛠 Lý do: {ly_do}\n"
-                                   f"---")
-                            send_telegram(msg)
-                            print(f"✅ Đã gửi tin nhắn mới cho: {thon}")
-                        else:
-                            print(f"⏭️ Lịch ngày {ngay} tại {thon} đã gửi rồi, bỏ qua.")
+        try:
+            url = "https://www.cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien"
+            print(f"→ Đang truy cập EVN...")
+            await page.goto(url, wait_until="networkidle", timeout=60000)
+            
+            # 1. Click Tab 2
+            await page.wait_for_selector("#tab-tab2")
+            await page.click("#tab-tab2")
+            await asyncio.sleep(3)
 
-        await browser.close()
+            # 2. Chọn Lâm Đồng (Dùng ID mới của đại ca)
+            await page.select_option("#idCongTyDienLuc", "PB03")
+            await asyncio.sleep(4)
+            
+            # 3. Chọn Lâm Hà (PB0306)
+            await page.select_option("#idDienLuc", "PB0306")
+            
+            # 4. Đợi nạp dữ liệu
+            target_id = "#idThongTinLichNgungGiamMaDonVi"
+            await page.wait_for_selector(target_id)
+            await asyncio.sleep(7) 
+
+            # 5. Lấy toàn bộ hàng trong bảng dữ liệu
+            rows = await page.query_selector_all(f"{target_id} table tbody tr")
+            
+            for row in rows:
+                text = await row.inner_text()
+                # Kiểm tra xem hàng này có chứa thôn/xã đại ca cần không
+                if any(area.lower() in text.lower() for area in WATCH_LIST):
+                    if is_new_event(text):
+                        msg = f"🔔 <b>LỊCH CÚP ĐIỆN MỚI</b>\n"
+                        msg += f"📍 Chi tiết: {text.strip()}\n"
+                        msg += f"⏰ Cập nhật: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+                        send_telegram(msg)
+                        print(f"✅ Đã gửi lịch mới: {text[:50]}...")
+                    else:
+                        print("⏭️ Lịch này đã gửi rồi, bỏ qua.")
+
+        except Exception as e:
+            print(f"❌ Lỗi: {e}")
+        finally:
+            await browser.close()
 
 if __name__ == "__main__":
     asyncio.run(run())
