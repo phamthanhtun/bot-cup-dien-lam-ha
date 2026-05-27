@@ -1,3 +1,4 @@
+import os
 import asyncio
 from playwright.async_api import async_playwright
 from datetime import datetime
@@ -7,7 +8,7 @@ import os
 import hashlib
 
 # --- CẤU HÌNH ---
-TELEGRAM_TOKEN = "8400722845:AAHAMQnpd-Y11A1zKaaHMXbFp-YXcCRl254"
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHAT_ID = "7880436708"
 LOG_FILE = "sent_logs.txt"
 
